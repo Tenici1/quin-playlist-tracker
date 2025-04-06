@@ -1,12 +1,11 @@
-async function updatePlaylist() {
+async function fetchAndProcessPlaylist() {
     try {
         const [currentSongTitle, queueTitles] = await Promise.all([
             fetchCurrentSong(),
             fetchQueueSongs()
         ]);
 
-        displayCurrentSong(currentSongTitle);
-        displayQueue(queueTitles, currentSongTitle);
+        updateUI(currentSongTitle, queueTitles);
     } catch (error) {
         console.error("An error occurred while fetching or processing the playlist:", error);
     }
@@ -24,58 +23,39 @@ async function fetchQueueSongs() {
     return parseSongs(chatEntries);
 }
 
+function parseCurrentSong(lines) {
+    for (const line of lines) {
+        if (line.includes("The stream is offline. Clearing the spotify request queue.")) {
+            localStorage.removeItem("lastMatchingIndex");
+        }
+        if (line.includes("🔊") && !line.includes("VIBE")) {
+            return line.substring(line.indexOf("🔊") + 2).trim();
+        }
+    }
+    return null;
+}
+
 function parseSongs(chatEntries) {
-    const songs = [];
-
-    chatEntries.forEach(entry => {
-        // Make sure the entry is for a song request
-        if (!entry.includes("custom-reward-id=c6a37c56-beaa-4752-90c8-e18efacfeaba")) {
-            return;
-        }
-
-        // Example entry:
-        // "@tmi-sent-ts=1743900334750;...custom-reward-id=... :userid!userid@userid.tmi.twitch.tv PRIVMSG #quin69 :artist - title\r"
-        const parts = entry.split(" :");
-        if (parts.length >= 3) {
-            const song = parts[parts.length - 1].trim();
-            if (song) {
-                songs.push(song);
-            }
-        }
-    });
-
-    return songs;
+    return chatEntries
+        .filter(entry => entry.includes("custom-reward-id=c6a37c56-beaa-4752-90c8-e18efacfeaba"))
+        .map(entry => {
+            const parts = entry.split(" :");
+            return parts.length >= 3 ? parts[parts.length - 1].trim() : null;
+        })
+        .filter(Boolean);
 }
 
 async function readNewChatEntries() {
     try {
-        // First, issue a HEAD request (with method 'HEAD') to get the redirected URL without fetching the full log.
-        const headResponse = await fetch("https://logs.ivr.fi/channel/quin69?raw", {
-            method: "HEAD",
-            redirect: "follow"
-        });
-        const redirectedUrl = headResponse.url;
-        const urlObj = new URL(redirectedUrl);
-        const segments = urlObj.pathname.split("/"); // expected: ["", "channel", "quin69", "YYYY", "M", "D"]
-        if (segments.length < 6) {
-            throw new Error("Unexpected URL format: " + redirectedUrl);
-        }
-        const year = segments[3];
-        const month = segments[4];
-        const day = segments[5];
-        const dateKey = `${year}-${month}-${day}`;
-        const songsKey = `requestSongs-${dateKey}`;
-        const offsetKey = `requestSongsOffset-${dateKey}`;
-
-        let dateOffset = localStorage.getItem(offsetKey);
-        dateOffset = dateOffset ? parseInt(dateOffset, 10) : 0;
+        const { dateKey, songsKey, offsetKey } = await getDateKeys();
+        const dateOffset = localStorage.getItem(offsetKey) || 0;
 
         const response = await fetch(`https://logs.ivr.fi/channel/quin69?raw&offset=${dateOffset}`);
         let text = "";
         if (response.status !== 404) {
             text = await response.text();
         }
-        const lines = text.split("\n").filter(e => e);
+        const lines = text.split("\n").filter(Boolean);
 
         const filteredLines = lines.filter(line =>
             line.includes("custom-reward-id=c6a37c56-beaa-4752-90c8-e18efacfeaba")
@@ -96,7 +76,7 @@ async function readNewChatEntries() {
         songsArray = songsArray.concat(filteredLines);
         localStorage.setItem(songsKey, JSON.stringify(songsArray));
 
-        const newOffset = dateOffset + lines.length;
+        const newOffset = parseInt(dateOffset) + lines.length;
         localStorage.setItem(offsetKey, newOffset);
 
         clearOldEntries(dateKey);
@@ -106,6 +86,30 @@ async function readNewChatEntries() {
         console.error("An error occurred while parsing queue titles:", error);
         return [];
     }
+}
+
+async function getDateKeys() {
+    const headResponse = await fetch("https://logs.ivr.fi/channel/quin69?raw", {
+        method: "HEAD",
+        redirect: "follow"
+    });
+
+    const redirectedUrl = headResponse.url;
+    const urlObj = new URL(redirectedUrl);
+    const segments = urlObj.pathname.split("/");
+
+    if (segments.length < 6) {
+        throw new Error("Unexpected URL format: " + redirectedUrl);
+    }
+
+    const [_, __, ___, year, month, day] = segments;
+    const dateKey = `${year}-${month}-${day}`;
+
+    return {
+        dateKey,
+        songsKey: `requestSongs-${dateKey}`,
+        offsetKey: `requestSongsOffset-${dateKey}`
+    };
 }
 
 function clearOldEntries(currentDateKey) {
@@ -138,21 +142,9 @@ function clearOldEntries(currentDateKey) {
     keysToRemove.forEach(key => localStorage.removeItem(key));
 }
 
-function parseCurrentSong(lines) {
-    let currentSongTitle = null;
-
-    for (const line of lines) {
-        // Clean-up if the stream ended and queue was cleared
-        if (line.includes("The stream is offline. Clearing the spotify request queue.")) {
-            localStorage.removeItem("lastMatchingIndex");
-        }
-        if (line.includes("🔊") && !line.includes("VIBE")) {
-            currentSongTitle = line.substring(line.indexOf("🔊") + 2).trim();
-            break;
-        }
-    }
-
-    return currentSongTitle;
+function updateUI(currentSongTitle, queueTitles) {
+    displayCurrentSong(currentSongTitle);
+    displayQueue(queueTitles, currentSongTitle);
 }
 
 function displayCurrentSong(song) {
@@ -269,17 +261,12 @@ function getEstimatedTime(songs) {
 }
 
 function minutesToHoursMinutesSeconds(minutes) {
-    var hours = Math.floor(minutes / 60);
-    var remainingMinutes = Math.round(minutes % 60);
-
-    if (hours <= 0) {
-        return remainingMinutes + "m";
-    }
-
-    return hours + "h " + remainingMinutes + "m";
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = Math.round(minutes % 60);
+    return hours <= 0 ? `${remainingMinutes}m` : `${hours}h ${remainingMinutes}m`;
 }
 
-window.onload = updatePlaylist;
+window.onload = fetchAndProcessPlaylist;
 
 const updateInterval = 1 * 60 * 1000;
-const intervalId = setInterval(updatePlaylist, updateInterval);
+const intervalId = setInterval(fetchAndProcessPlaylist, updateInterval);
