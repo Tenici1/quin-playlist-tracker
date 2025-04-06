@@ -146,7 +146,7 @@ function parseCurrentSong(lines) {
         if (line.includes("The stream is offline. Clearing the spotify request queue.")) {
             localStorage.removeItem("lastMatchingIndex");
         }
-        if (line.includes("🔊") && !line.includes("VIBE") && !line.includes("The stream is offline")) {
+        if (line.includes("🔊") && !line.includes("VIBE")) {
             currentSongTitle = line.substring(line.indexOf("🔊") + 2).trim();
             break;
         }
