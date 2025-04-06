@@ -1,12 +1,17 @@
 
 ## Tracking Twitch.tv/Quin69's Chat-Requested Songs
-View this page at: https://orare.github.io/quin-playlist-tracker/
+View this page at: https://tenici1.github.io/quin-playlist-tracker/
 
-This project tracks songs requested in Twitch.tv/Quin69's chat! It builds a playlist of viewer-requested songs using Sheepfarmer's chat logs.
+This is a fixed version after SheepFarmer stopped typing requested songs in chat. This version reads the full chat to fetch the channel redemptions. Since this is more data we also cache the result in local-storage to avoid fetching too much data.
+
+Original:
+https://github.com/orare/quin-playlist-tracker
 
 **How It Works:**
 
-We use Sheepfarmer's chat logs to record song requests, keeping the playlist up-to-date. Note that the accuracy depends on whether Quin69 uses the chat's playlist.
+We use Sheepfarmer's chat logs to see the current song, keeping the playlist up-to-date. Note that the accuracy depends on whether Quin69 uses the chat's playlist.
+
+We read the full chat to fetch redemptions - since this is more data we also cache this and only fetch new messages each loop.
 
 **Keeping It Accurate:**
 
