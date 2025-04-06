@@ -42,7 +42,8 @@ function parseSongs(chatEntries) {
             const parts = entry.split(" :");
             return parts.length >= 3 ? parts[parts.length - 1].trim() : null;
         })
-        .filter(Boolean);
+        .filter(Boolean)
+        .reverse();
 }
 
 async function readNewChatEntries() {
@@ -195,6 +196,12 @@ function displayQueue(queue, currentSong) {
             // As a last resort, return true if either artist or title matches
             if (songArtist === currentArtist || songTitle === currentTitle ||
                 songArtist === currentTitle || songTitle === currentArtist) {
+                songFound = true;
+                break;
+            }
+
+            // This might be too leniant but with messy requests it's the only way
+            if (song.includes(currentTitle)) {
                 songFound = true;
                 break;
             }
